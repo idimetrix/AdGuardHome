@@ -75,6 +75,7 @@ blocklist_imports() {
 		-n\
 		-- '*.go'\
 		':!*.pb.go'\
+		':!./internal/aghos/permission_windows.go'\
 		| sed -e 's/^\([^[:space:]]\+\)\(.*\)$/\1 blocked import:\2/'\
 		|| exit 0
 }
