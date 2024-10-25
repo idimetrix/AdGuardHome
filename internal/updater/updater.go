@@ -264,7 +264,7 @@ func (u *Updater) check() (err error) {
 // ignores the configuration file if firstRun is true.
 func (u *Updater) backup(firstRun bool) (err error) {
 	log.Debug("updater: backing up current configuration")
-	_ = os.Mkdir(u.backupDir, aghos.DefaultPermDir)
+	_ = aghos.Mkdir(u.backupDir, aghos.DefaultPermDir)
 	if !firstRun {
 		err = copyFile(u.confName, filepath.Join(u.backupDir, "AdGuardHome.yaml"))
 		if err != nil {
@@ -338,12 +338,12 @@ func (u *Updater) downloadPackageFile() (err error) {
 		return fmt.Errorf("io.ReadAll() failed: %w", err)
 	}
 
-	_ = os.Mkdir(u.updateDir, aghos.DefaultPermDir)
+	_ = aghos.Mkdir(u.updateDir, aghos.DefaultPermDir)
 
 	log.Debug("updater: saving package to file")
-	err = os.WriteFile(u.packageName, body, aghos.DefaultPermFile)
+	err = aghos.WriteFile(u.packageName, body, aghos.DefaultPermFile)
 	if err != nil {
-		return fmt.Errorf("os.WriteFile() failed: %w", err)
+		return fmt.Errorf("writing package file: %w", err)
 	}
 	return nil
 }
@@ -366,9 +366,9 @@ func tarGzFileUnpackOne(outDir string, tr *tar.Reader, hdr *tar.Header) (name st
 			return "", nil
 		}
 
-		err = os.Mkdir(outputName, os.FileMode(hdr.Mode&0o755))
+		err = aghos.Mkdir(outputName, os.FileMode(hdr.Mode&0o755))
 		if err != nil && !errors.Is(err, os.ErrExist) {
-			return "", fmt.Errorf("os.Mkdir(%q): %w", outputName, err)
+			return "", fmt.Errorf("creating directory %q: %w", outputName, err)
 		}
 
 		log.Debug("updater: created directory %q", outputName)
@@ -469,9 +469,9 @@ func zipFileUnpackOne(outDir string, zf *zip.File) (name string, err error) {
 			return "", nil
 		}
 
-		err = os.Mkdir(outputName, fi.Mode())
+		err = aghos.Mkdir(outputName, fi.Mode())
 		if err != nil && !errors.Is(err, os.ErrExist) {
-			return "", fmt.Errorf("os.Mkdir(%q): %w", outputName, err)
+			return "", fmt.Errorf("creating directory %q: %w", outputName, err)
 		}
 
 		log.Debug("updater: created directory %q", outputName)
@@ -523,15 +523,19 @@ func zipFileUnpack(zipfile, outDir string) (files []string, err error) {
 }
 
 // Copy file on disk
-func copyFile(src, dst string) error {
-	d, e := os.ReadFile(src)
-	if e != nil {
-		return e
+func copyFile(src, dst string) (err error) {
+	d, err := os.ReadFile(src)
+	if err != nil {
+		// Don't wrap the error, since it's informative enough as is.
+		return err
 	}
-	e = os.WriteFile(dst, d, aghos.DefaultPermFile)
-	if e != nil {
-		return e
+
+	err = aghos.WriteFile(dst, d, aghos.DefaultPermFile)
+	if err != nil {
+		// Don't wrap the error, since it's informative enough as is.
+		return err
 	}
+
 	return nil
 }
 

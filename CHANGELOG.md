@@ -31,6 +31,7 @@ NOTE: Add new changes BELOW THIS COMMENT.
 
 ### Fixed
 
+- Incorrect handling of sensitive files permissions on Windows ([#7314]).
 - Repetitive statistics log messages ([#7338]).
 - Custom client cache ([#7250]).
 - Missing runtime clients with information from the system hosts file on first

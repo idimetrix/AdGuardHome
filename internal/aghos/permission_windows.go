@@ -40,11 +40,11 @@ func stat(name string) (fi os.FileInfo, err error) {
 
 	const objectType windows.SE_OBJECT_TYPE = windows.SE_FILE_OBJECT
 
-	secInfo := windows.SECURITY_INFORMATION(0 |
+	secInfo := windows.SECURITY_INFORMATION(
 		windows.OWNER_SECURITY_INFORMATION |
-		windows.GROUP_SECURITY_INFORMATION |
-		windows.DACL_SECURITY_INFORMATION |
-		windows.PROTECTED_DACL_SECURITY_INFORMATION,
+			windows.GROUP_SECURITY_INFORMATION |
+			windows.DACL_SECURITY_INFORMATION |
+			windows.PROTECTED_DACL_SECURITY_INFORMATION,
 	)
 
 	sd, err := windows.GetNamedSecurityInfo(fi.Name(), objectType, secInfo)
@@ -97,7 +97,7 @@ func chmod(name string, perm fs.FileMode) (err error) {
 	const objectType windows.SE_OBJECT_TYPE = windows.SE_FILE_OBJECT
 
 	entries := make([]windows.EXPLICIT_ACCESS, 0, 3)
-	creatorMask, groupMask, worldMask := modeToMasks(perm)
+	creatorMask, groupMask, worldMask := permToMasks(perm)
 
 	sidMasks := container.KeyValues[windows.WELL_KNOWN_SID_TYPE, windows.ACCESS_MASK]{{
 		Key:   windows.WinCreatorOwnerSid,
@@ -175,6 +175,28 @@ func mkdir(name string, perm os.FileMode) (err error) {
 	return chmod(name, perm)
 }
 
+// mkdirAll is a Windows implementation of [MkdirAll].
+func mkdirAll(path string, perm os.FileMode) (err error) {
+	parent, _ := filepath.Split(path)
+
+	err = os.MkdirAll(parent, perm)
+	if err != nil {
+		return fmt.Errorf("creating parent directories: %w", err)
+	}
+
+	return mkdir(path, perm)
+}
+
+// writeFile is a Windows implementation of [WriteFile].
+func writeFile(filename string, data []byte, perm os.FileMode) (err error) {
+	err = os.WriteFile(filename, data, perm)
+	if err != nil {
+		return fmt.Errorf("writing file: %w", err)
+	}
+
+	return chmod(filename, perm)
+}
+
 // newWellKnownTrustee returns a trustee for a well-known SID.
 func newWellKnownTrustee(stype windows.WELL_KNOWN_SID_TYPE) (t *windows.TRUSTEE, err error) {
 	sid, err := windows.CreateWellKnownSid(stype)
@@ -190,13 +212,13 @@ func newWellKnownTrustee(stype windows.WELL_KNOWN_SID_TYPE) (t *windows.TRUSTEE,
 
 // Constants reflecting the UNIX permission bits.
 const (
-	ownerWrite = 0b010000000
-	groupWrite = 0b000100000
-	worldWrite = 0b000000100
+	ownerWrite = 0b010_000_000
+	groupWrite = 0b000_100_000
+	worldWrite = 0b000_000_100
 
-	ownerAll = 0b111000000
-	groupAll = 0b000111000
-	worldAll = 0b000000111
+	ownerAll = 0b111_000_000
+	groupAll = 0b000_111_000
+	worldAll = 0b000_000_111
 )
 
 // Constants reflecting the number of bits to shift the UNIX permission bits to
@@ -216,9 +238,9 @@ const (
 	deleteWorld = 15
 )
 
-// modeToMasks converts a UNIX file mode to the corresponding Windows access
-// masks.
-func modeToMasks(fm os.FileMode) (owner, group, world windows.ACCESS_MASK) {
+// permToMasks converts a UNIX file mode permissions to the corresponding
+// Windows access masks.
+func permToMasks(fm os.FileMode) (owner, group, world windows.ACCESS_MASK) {
 	mask := windows.ACCESS_MASK(fm.Perm())
 
 	owner = ((mask & ownerAll) << genericOwner) | ((mask & ownerWrite) << deleteOwner)
@@ -229,7 +251,7 @@ func modeToMasks(fm os.FileMode) (owner, group, world windows.ACCESS_MASK) {
 }
 
 // masksToPerm converts Windows access masks to the corresponding UNIX file
-// mode.
+// mode permission bits.
 func masksToPerm(u, g, o windows.ACCESS_MASK) (perm os.FileMode) {
 	perm |= os.FileMode(((u >> genericOwner) & ownerAll) | ((u >> deleteOwner) & ownerWrite))
 	perm |= os.FileMode(((g >> genericGroup) & groupAll) | ((g >> deleteGroup) & groupWrite))
