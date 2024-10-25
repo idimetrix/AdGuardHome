@@ -59,7 +59,7 @@ set -f -u
 #
 #   *  Files generated from protobuf schemas, which use package reflect.
 #
-#   *  Windows-specific code caused to golang.org/x/sys/windows API design.
+#   *  Windows-specific code caused by golang.org/x/sys/windows API design.
 #
 # TODO(a.garipov): Add golibs/log.
 #
