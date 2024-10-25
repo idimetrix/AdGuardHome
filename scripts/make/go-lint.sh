@@ -52,7 +52,8 @@ set -f -u
 #
 #   *  Package sort is replaced by package slices.
 #
-#   *  Package unsafe is… unsafe.
+#   *  Package unsafe is… unsafe.  The only exception is Windows-specific code
+#      due to golang.org/x/sys/windows API design.
 #
 # Currently, the only standard exception are files generated from protobuf
 # schemas, which use package reflect.  If your project needs more exceptions,
