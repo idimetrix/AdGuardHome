@@ -1,6 +1,9 @@
 package aghos
 
-import "io/fs"
+import (
+	"io/fs"
+	"os"
+)
 
 // TODO(e.burkov):  Add platform-independent tests.
 
@@ -26,6 +29,12 @@ func MkdirAll(path string, perm fs.FileMode) (err error) {
 // access rights.
 func WriteFile(filename string, data []byte, perm fs.FileMode) (err error) {
 	return writeFile(filename, data, perm)
+}
+
+// OpenFile is an extension for [os.OpenFile] that properly handles Windows
+// access rights.
+func OpenFile(name string, flag int, perm fs.FileMode) (file *os.File, err error) {
+	return openFile(name, flag, perm)
 }
 
 // Stat is an extension for [os.Stat] that properly handles Windows access

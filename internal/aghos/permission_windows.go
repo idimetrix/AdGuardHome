@@ -180,7 +180,7 @@ func mkdirAll(path string, perm os.FileMode) (err error) {
 	parent, _ := filepath.Split(path)
 
 	err = os.MkdirAll(parent, perm)
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrExist) {
 		return fmt.Errorf("creating parent directories: %w", err)
 	}
 
@@ -195,6 +195,26 @@ func writeFile(filename string, data []byte, perm os.FileMode) (err error) {
 	}
 
 	return chmod(filename, perm)
+}
+
+// openFile is a Windows implementation of [OpenFile].
+func openFile(name string, flag int, perm os.FileMode) (file *os.File, err error) {
+	// Only change permissions if the file not yet exists, but should be
+	// created.
+	if flag&os.O_CREATE != 0 {
+		return os.OpenFile(name, flag, perm)
+	}
+
+	_, err = stat(name)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			defer func() { err = errors.WithDeferred(err, chmod(name, perm)) }()
+		} else {
+			return nil, fmt.Errorf("getting file info: %w", err)
+		}
+	}
+
+	return os.OpenFile(name, flag, perm)
 }
 
 // newWellKnownTrustee returns a trustee for a well-known SID.
@@ -213,8 +233,8 @@ func newWellKnownTrustee(stype windows.WELL_KNOWN_SID_TYPE) (t *windows.TRUSTEE,
 // Constants reflecting the UNIX permission bits.
 const (
 	ownerWrite = 0b010_000_000
-	groupWrite = 0b000_100_000
-	worldWrite = 0b000_000_100
+	groupWrite = 0b000_010_000
+	worldWrite = 0b000_000_010
 
 	ownerAll = 0b111_000_000
 	groupAll = 0b000_111_000
