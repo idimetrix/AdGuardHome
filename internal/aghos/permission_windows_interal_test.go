@@ -14,6 +14,8 @@ import (
 const (
 	winAccessWrite = windows.GENERIC_WRITE | windows.DELETE
 	winAccessFull  = windows.GENERIC_READ | windows.GENERIC_EXECUTE | winAccessWrite
+
+	winAccessDirRead = windows.GENERIC_READ | windows.FILE_LIST_DIRECTORY | windows.FILE_TRAVERSE
 )
 
 func TestPermToMasks(t *testing.T) {
@@ -25,31 +27,49 @@ func TestPermToMasks(t *testing.T) {
 		wantUser  windows.ACCESS_MASK
 		wantGroup windows.ACCESS_MASK
 		wantOther windows.ACCESS_MASK
+		isDir     bool
 	}{{
 		name:      "all",
 		perm:      0b111_111_111,
 		wantUser:  winAccessFull,
 		wantGroup: winAccessFull,
 		wantOther: winAccessFull,
+		isDir:     false,
 	}, {
 		name:      "user_write",
 		perm:      0o010_000_000,
 		wantUser:  winAccessWrite,
 		wantGroup: 0,
 		wantOther: 0,
+		isDir:     false,
 	}, {
 		name:      "group_read",
 		perm:      0o000_010_000,
 		wantUser:  0,
 		wantGroup: windows.GENERIC_READ,
 		wantOther: 0,
+		isDir:     false,
+	}, {
+		name:      "all_dir",
+		perm:      0b111_111_111,
+		wantUser:  winAccessFull | winAccessDirRead,
+		wantGroup: winAccessFull | winAccessDirRead,
+		wantOther: winAccessFull | winAccessDirRead,
+		isDir:     true,
+	}, {
+		name:      "user_write_dir",
+		perm:      0o010_000_000,
+		wantUser:  winAccessWrite,
+		wantGroup: 0,
+		wantOther: 0,
+		isDir:     true,
 	}}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			user, group, other := permToMasks(tc.perm)
+			user, group, other := permToMasks(tc.perm, tc.isDir)
 			assert.Equal(t, tc.wantUser, user)
 			assert.Equal(t, tc.wantGroup, group)
 			assert.Equal(t, tc.wantOther, other)

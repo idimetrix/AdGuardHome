@@ -5,6 +5,8 @@ package aghos
 import (
 	"io/fs"
 	"os"
+
+	"github.com/google/renameio/v2/maybe"
 )
 
 // chmod is a Unix implementation of [Chmod].
@@ -24,7 +26,7 @@ func mkdirAll(path string, perm fs.FileMode) (err error) {
 
 // writeFile is a Unix implementation of [WriteFile].
 func writeFile(filename string, data []byte, perm fs.FileMode) (err error) {
-	return os.WriteFile(filename, data, perm)
+	return maybe.WriteFile(filename, data, perm)
 }
 
 // openFile is a Unix implementation of [OpenFile].

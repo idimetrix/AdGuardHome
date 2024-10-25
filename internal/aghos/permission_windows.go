@@ -86,9 +86,11 @@ func stat(name string) (fi os.FileInfo, err error) {
 		}
 	}
 
+	mode := masksToPerm(ownerMask, groupMask, otherMask) | (fi.Mode().Perm() & ^fs.ModePerm)
+
 	return &fileInfo{
 		FileInfo: fi,
-		mode:     masksToPerm(ownerMask, groupMask, otherMask),
+		mode:     mode,
 	}, nil
 }
 
@@ -96,8 +98,13 @@ func stat(name string) (fi os.FileInfo, err error) {
 func chmod(name string, perm fs.FileMode) (err error) {
 	const objectType windows.SE_OBJECT_TYPE = windows.SE_FILE_OBJECT
 
+	fi, err := os.Stat(name)
+	if err != nil {
+		return fmt.Errorf("getting file info: %w", err)
+	}
+
 	entries := make([]windows.EXPLICIT_ACCESS, 0, 3)
-	creatorMask, groupMask, worldMask := permToMasks(perm)
+	creatorMask, groupMask, worldMask := permToMasks(perm, fi.IsDir())
 
 	sidMasks := container.KeyValues[windows.WELL_KNOWN_SID_TYPE, windows.ACCESS_MASK]{{
 		Key:   windows.WinCreatorOwnerSid,
@@ -120,6 +127,8 @@ func chmod(name string, perm fs.FileMode) (err error) {
 		trustee, err = newWellKnownTrustee(sidMask.Key)
 		if err != nil {
 			errs = append(errs, err)
+
+			continue
 		}
 
 		entries = append(entries, windows.EXPLICIT_ACCESS{
@@ -184,24 +193,35 @@ func mkdirAll(path string, perm os.FileMode) (err error) {
 		return fmt.Errorf("creating parent directories: %w", err)
 	}
 
-	return mkdir(path, perm)
+	err = mkdir(path, perm)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+
+	return err
 }
 
 // writeFile is a Windows implementation of [WriteFile].
 func writeFile(filename string, data []byte, perm os.FileMode) (err error) {
-	err = os.WriteFile(filename, data, perm)
+	file, err := openFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
-		return fmt.Errorf("writing file: %w", err)
+		return fmt.Errorf("opening file: %w", err)
+	}
+	defer func() { err = errors.WithDeferred(err, file.Close()) }()
+
+	_, err = file.Write(data)
+	if err != nil {
+		return fmt.Errorf("writing data: %w", err)
 	}
 
-	return chmod(filename, perm)
+	return nil
 }
 
 // openFile is a Windows implementation of [OpenFile].
 func openFile(name string, flag int, perm os.FileMode) (file *os.File, err error) {
 	// Only change permissions if the file not yet exists, but should be
 	// created.
-	if flag&os.O_CREATE != 0 {
+	if flag&os.O_CREATE == 0 {
 		return os.OpenFile(name, flag, perm)
 	}
 
@@ -236,6 +256,10 @@ const (
 	groupWrite = 0b000_010_000
 	worldWrite = 0b000_000_010
 
+	ownerRead = 0b100_000_000
+	groupRead = 0b000_100_000
+	worldRead = 0b000_000_100
+
 	ownerAll = 0b111_000_000
 	groupAll = 0b000_111_000
 	worldAll = 0b000_000_111
@@ -251,21 +275,56 @@ const (
 )
 
 // Constants reflecting the number of bits to shift the UNIX write permission
-// bits to convert them to the delete access rights used by Windows.
+// bits to convert them to the access rights used by Windows.
 const (
 	deleteOwner = 9
 	deleteGroup = 12
 	deleteWorld = 15
+
+	listDirOwner = 7
+	listDirGroup = 10
+	listDirWorld = 13
+
+	traverseOwner = 2
+	traverseGroup = 5
+	traverseWorld = 8
+
+	writeEAOwner = 2
+	writeEAGroup = 1
+	writeEAWorld = 4
+
+	deleteChildOwner = 1
+	deleteChildGroup = 4
+	deleteChildWorld = 7
 )
 
 // permToMasks converts a UNIX file mode permissions to the corresponding
-// Windows access masks.
-func permToMasks(fm os.FileMode) (owner, group, world windows.ACCESS_MASK) {
+// Windows access masks.  The [isDir] argument is used to set specific access
+// bits for directories.
+func permToMasks(fm os.FileMode, isDir bool) (owner, group, world windows.ACCESS_MASK) {
 	mask := windows.ACCESS_MASK(fm.Perm())
 
 	owner = ((mask & ownerAll) << genericOwner) | ((mask & ownerWrite) << deleteOwner)
 	group = ((mask & groupAll) << genericGroup) | ((mask & groupWrite) << deleteGroup)
 	world = ((mask & worldAll) << genericWorld) | ((mask & worldWrite) << deleteWorld)
+
+	if isDir {
+		owner |= (mask & ownerRead) << listDirOwner
+		group |= (mask & groupRead) << listDirGroup
+		world |= (mask & worldRead) << listDirWorld
+
+		owner |= (mask & ownerRead) << traverseOwner
+		group |= (mask & groupRead) << traverseGroup
+		world |= (mask & worldRead) << traverseWorld
+
+		owner |= (mask & ownerWrite) << deleteChildOwner
+		group |= (mask & groupWrite) << deleteChildGroup
+		world |= (mask & worldWrite) << deleteChildWorld
+
+		owner |= (mask & ownerWrite) >> writeEAOwner
+		group |= (mask & groupWrite) << writeEAGroup
+		world |= (mask & worldWrite) << writeEAWorld
+	}
 
 	return owner, group, world
 }
